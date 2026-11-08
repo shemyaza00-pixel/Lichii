@@ -964,6 +964,13 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     size_t skipped_pipelines = 0;
     size_t deferred_pipelines = 0;
     size_t queued_graphics = 0;
+    // Diagnostics only: count cache entries eliminated before the build queue.
+    size_t cache_seen = 0;
+    size_t reject_mesh = 0;
+    size_t reject_dynamic = 0;
+    size_t reject_provoking = 0;
+    size_t reject_transform_feedback = 0;
+    size_t reject_duplicate = 0;
 
     if (use_vulkan_pipeline_cache) {
         vulkan_pipeline_cache_filename =
@@ -1022,12 +1029,14 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     const auto load_graphics{[&](std::ifstream& file, std::vector<FileEnvironment> envs) {
         GraphicsPipelineCacheKey key;
         file.read(reinterpret_cast<char*>(&key), sizeof(key));
+        ++cache_seen;
 
         if (!device.IsExtMeshShaderSupported() &&
             std::ranges::any_of(envs, [](const FileEnvironment& env) {
                 return env.ShaderStage() == Shader::Stage::Task ||
                        env.ShaderStage() == Shader::Stage::Mesh;
             })) {
+            ++reject_mesh;
             return;
         }
 
@@ -1045,22 +1054,26 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                 dynamic_features.has_color_write_enable ||
             (key.state.dynamic_vertex_input != 0) !=
                 dynamic_features.has_dynamic_vertex_input) {
+            ++reject_dynamic;
             return;
         }
 
         const bool key_requests_provoking_last = key.state.provoking_vertex_last != 0;
         if (key_requests_provoking_last && !dynamic_features.has_provoking_vertex_last_mode) {
+            ++reject_provoking;
             return;
         }
 
         const bool key_uses_transform_feedback = key.state.xfb_enabled != 0;
         if (key_uses_transform_feedback && key_requests_provoking_last &&
             !dynamic_features.has_provoking_vertex_tf_preserve) {
+            ++reject_transform_feedback;
             return;
         }
 
         const u64 hash = key.Hash();
         if (!disk_pipelines.insert(hash).second) {
+            ++reject_duplicate;
             return;
         }
         if (!PreloadAllPipelines() &&
@@ -1121,6 +1134,10 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     }
     compute_envs.clear();
 
+    LOG_INFO(Render_Vulkan, "Cache diagnostics: read={} mesh={} dynamic={} provoking={} tf={} duplicates={} queued={} skipped={} background={} preload_all={}",
+             cache_seen, reject_mesh, reject_dynamic, reject_provoking,
+             reject_transform_feedback, reject_duplicate, queued_graphics,
+             skipped_pipelines, deferred_pipelines, PreloadAllPipelines());
     LOG_INFO(Render_Vulkan, "Total Pipeline Count: {}", state.total);
     if (skipped_pipelines != 0) {
         LOG_INFO(
