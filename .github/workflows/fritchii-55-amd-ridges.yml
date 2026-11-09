@@ -366,6 +366,29 @@ jobs:
             "-DCMAKE_C_FLAGS=$profile" \
             "-DCMAKE_CXX_FLAGS=$profile"
 
+      - name: Keep upstream MSVC warnings as warnings
+        if: matrix.platform == 'windows-x86_64'
+        shell: pwsh
+        run: |
+          # Fritchii is normally built with Clang; its MSVC warning-as-error
+          # settings reject harmless shadowing in unchanged source files.
+          # Disable only the promotion of MSVC warnings to errors, not actual
+          # compiler errors, in generated Ninja command lines.
+          $files = Get-ChildItem build/release -Recurse -Filter '*.ninja' -File
+          $total = 0
+          foreach ($file in $files) {
+            $original = [System.IO.File]::ReadAllText($file.FullName)
+            $matches = [regex]::Matches($original, '(?<!\\w)(?:/|-| -)we([0-9]{4})')
+            # Preserve prefix; change /weNNNN -> /wdNNNN.
+            $updated = [regex]::Replace($original, '([/-])we([0-9]{4})', '$1wd$2')
+            if ($updated -ne $original) {
+              [System.IO.File]::WriteAllText($file.FullName, $updated)
+              $total += $matches.Count
+            }
+          }
+          Write-Host "MSVC promoted-warning flags disabled: $total"
+          if ($total -eq 0) { throw 'No MSVC promoted-warning flags found in Ninja files' }
+
       - name: Save CPM downloads
         if: steps.cpm-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
