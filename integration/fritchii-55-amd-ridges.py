@@ -85,4 +85,15 @@ replace_once(root + "vk_rasterizer.h",
     """    void UpdateBlending(Tegra::Engines::Maxwell3D::Regs& regs);
     u8 last_color_output_mask{0xff};
     void UpdateColorWriteEnable""")
-print("Applied four-file #323 fix to Fritchii v5.5; no other sources changed")
+# Fritchii v5.5 uses a local variable named 'values' in settings functions.
+# Its upstream MSVC flags mark shadow warnings (C4459) as errors; renaming a
+# local identifier fixes the build without changing the settings behavior.
+import re
+settings_path = Path("src/common/frizti_settings.cpp")
+settings_text = settings_path.read_text(encoding="utf-8")
+settings_text, renamed = re.subn(r"\\bvalues\\b", "local_values", settings_text)
+if renamed < 6:
+    raise RuntimeError(f"Unexpected local settings variable count: {renamed}")
+settings_path.write_text(settings_text, encoding="utf-8")
+print(f"Renamed {renamed} local settings references for MSVC build compatibility")
+print("Applied four-file #323 graphics fix plus settings identifier rename (no semantic change)")
