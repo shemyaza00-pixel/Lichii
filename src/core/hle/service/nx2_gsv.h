@@ -3205,13 +3205,30 @@ private:
             if (m_flush) {
                 continue;
             }
-            for (auto& picture : pictures) {
-                const u64 pts = picture.pts;
+            // OoT plays movie audio against real time even when video decode falls behind.
+            // Discard frames already overtaken by that clock before they fill the output queue.
+            // Preserve the last frame and end-of-stream semantics.
+            constexpr u64 OcarinaOfTimeProgramId = 0x0400486024DEC000ULL;
+            const bool sync_oot =
+                system.GetApplicationProcessProgramID() == OcarinaOfTimeProgramId;
+            const auto movie_due =
+                sync_oot ? m_clock.Due(HostTimeUs(), PauseEndUs()) : std::nullopt;
+            for (size_t i = 0; i < pictures.size(); ++i) {
+                const u64 pts = pictures[i].pts;
                 if (pts > m_last_decoded_pts && pts - m_last_decoded_pts <= 100'000) {
                     m_frame_interval = pts - m_last_decoded_pts;
                 }
                 m_last_decoded_pts = pts;
-                m_decoded.push_back({std::move(picture), pts, false});
+                if (movie_due && pts < *movie_due &&
+                    *movie_due - pts > 2 * m_frame_interval) {
+                    const bool last_eos_picture = input.end && i + 1 == pictures.size();
+                    const bool newer_follows = i + 1 < pictures.size() || !m_inputs.Empty();
+                    if (!last_eos_picture && newer_follows) {
+                        ++m_frames_dropped;
+                        continue;
+                    }
+                }
+                m_decoded.push_back({std::move(pictures[i]), pts, false});
             }
             if (input.end) {
                 // The client stops at the frame marked end of stream; give it one even when the
