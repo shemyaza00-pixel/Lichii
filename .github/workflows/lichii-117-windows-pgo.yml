@@ -24,7 +24,7 @@ on:
       - ".patch/**"
       - "cpmfile.json"
       - "*.profdata"
-      - ".github/workflows/release-binaries.yml"
+      - ".github/workflows/lichii-117-windows-pgo.yml"
 
 permissions:
   contents: read
