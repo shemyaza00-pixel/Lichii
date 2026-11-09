@@ -85,4 +85,22 @@ replace_once(root + "vk_rasterizer.h",
     """    void UpdateBlending(Tegra::Engines::Maxwell3D::Regs& regs);
     u8 last_color_output_mask{0xff};
     void UpdateColorWriteEnable""")
-print('Applied issue #323 AMD Vulkan rendering fix to exactly four graphics files')
+# Existing Fritchii v5.5 code shadows a class field named 'writes'.
+# Both official Clang and MSVC can make this a build error under -Werror.
+# Rename only the local argument; behavior remains identical.
+replace_once("src/video_core/gpu_split.h",
+    """    void DrawBatch(Tegra::Engines::EngineInterface* engine, const u64* writes, u32 count,
+                   u32 repeats, Effect effect) {
+        SelectEngine(engine);
+        u64* const entry = Reserve(1 + size_t{count});
+        entry[0] = static_cast<u64>(Kind::DrawBatch) | (u64{count & 0xff} << 8) |
+                   (u64{repeats} << 32);
+        std::memcpy(entry + 1, writes, size_t{count} * sizeof(u64));""",
+    """    void DrawBatch(Tegra::Engines::EngineInterface* engine, const u64* batch_writes, u32 count,
+                   u32 repeats, Effect effect) {
+        SelectEngine(engine);
+        u64* const entry = Reserve(1 + size_t{count});
+        entry[0] = static_cast<u64>(Kind::DrawBatch) | (u64{count & 0xff} << 8) |
+                   (u64{repeats} << 32);
+        std::memcpy(entry + 1, batch_writes, size_t{count} * sizeof(u64));""")
+print('Applied four-file Vulkan graphics patch plus one identifier-only Clang build fix')
