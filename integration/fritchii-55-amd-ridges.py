@@ -91,7 +91,7 @@ replace_once(root + "vk_rasterizer.h",
 import re
 settings_path = Path("src/common/frizti_settings.cpp")
 settings_text = settings_path.read_text(encoding="utf-8")
-settings_text, renamed = re.subn(r"\\bvalues\\b", "local_values", settings_text)
+settings_text, renamed = re.subn(r"\bvalues\b", "local_values", settings_text)
 if renamed < 6:
     raise RuntimeError(f"Unexpected local settings variable count: {renamed}")
 settings_path.write_text(settings_text, encoding="utf-8")
