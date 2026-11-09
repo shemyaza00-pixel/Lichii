@@ -297,7 +297,7 @@ jobs:
         run: >-
           cmake -S . -B build/release -G Ninja
           -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_CXX_FLAGS=/wd4459
+          -DCMAKE_CXX_FLAGS=-wd4459
           -DBUILD_TESTING=OFF
           -DYUZU_TESTS=OFF
           -DYUZU_CMD=ON
