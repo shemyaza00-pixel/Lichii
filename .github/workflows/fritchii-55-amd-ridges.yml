@@ -228,7 +228,7 @@ jobs:
           install: >-
             git make autoconf libtool automake-wrapper patch jq pactoys ninja
           pacboy: >-
-            toolchain:p clang:p lld:p cmake:p python-pip:p
+            toolchain:p clang22:p lld22:p cmake:p python-pip:p
             qt6-base:p qt6-charts:p qt6-tools:p qt6-translations:p qt6-svg:p
             openssl:p boost:p fmt:p lz4:p nlohmann-json:p zlib:p zstd:p libiconv:p
             vulkan-memory-allocator:p vulkan-devel:p glslang:p enet:p opus:p
@@ -339,20 +339,30 @@ jobs:
 
       # MinGW build: system Qt and libraries from MSYS2, clang plus the repo's PGO profile. The profile
       # path is converted to its Windows form because clang runs with the MSYS mount underneath.
-      - name: Confirm official Clang toolchain and PGO profile
+      - name: Verify exact Clang 22.1.8 and LLD 22.1.8 toolchain
         if: matrix.mingw
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          export PATH="/ucrt64/opt/llvm22/bin:$PATH"
+          test -x /ucrt64/opt/llvm22/bin/clang.exe
+          test -x /ucrt64/opt/llvm22/bin/clang++.exe
+          test -x /ucrt64/opt/llvm22/bin/ld.lld.exe
           clang --version
+          clang++ --version
+          ld.lld --version
+          clang --version | grep -Eq 'clang version 22\\.1\\.8'
+          ld.lld --version | grep -Eq 'LLD 22\\.1\\.8'
           test -s eglantine.profdata
-          echo "Windows PGO profile available."
+          # Do not silently fall back to Clang 23 or turn PGO off.
+          llvm-profdata show eglantine.profdata >/dev/null
 
       - name: Configure MinGW PGO
         if: matrix.mingw
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          export PATH="/ucrt64/opt/llvm22/bin:$PATH"
           profile="-fprofile-use=$(cygpath -m "$PWD/eglantine.profdata") -Wno-backend-plugin \
             -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date"
           cmake -S . -B build/release -G Ninja \
@@ -372,8 +382,8 @@ jobs:
             -DLICHII_BUILD_PLATFORM=${{ matrix.platform }} \
             -DUSE_DISCORD_PRESENCE=OFF \
             -DUSE_CCACHE=ON \
-            -DCMAKE_C_COMPILER=clang \
-            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER=/ucrt64/opt/llvm22/bin/clang.exe \
+            -DCMAKE_CXX_COMPILER=/ucrt64/opt/llvm22/bin/clang++.exe \
             -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld \
             "-DCMAKE_C_FLAGS=$profile" \
             "-DCMAKE_CXX_FLAGS=$profile"
@@ -415,6 +425,7 @@ jobs:
         if: matrix.mingw
         shell: msys2 {0}
         run: |
+          export PATH="/ucrt64/opt/llvm22/bin:$PATH"
           ccache --zero-stats
           cmake --build build/release --target yuzu yuzu-cmd --parallel
           ccache --show-stats
@@ -675,5 +686,5 @@ jobs:
           tag="fritchii55-amd-${GITHUB_RUN_NUMBER}"
           gh release create "$tag" dist/fritchii-55-amd-ridge-fix-windows-x64.zip \
             --repo "${GITHUB_REPOSITORY}" --verify-tag --prerelease \
-            --title "Fritchii v5.5 Clang PGO + AMD ridge fix (${GITHUB_SHA::7})" \
-            --notes "Exact Fritchii v5.5 source plus the four-file Vulkan unwritten-render-target fix from zortos293/Lichii issue 323. Full AMD shader precompilation retained. No audio changes. Compiled with the original Fritchii Windows Clang/MSYS2 PGO toolchain and eglantine.profdata. Four Vulkan files changed, all shader precompilation preserved, no audio changes. Untested in-game."
+            --title "Fritchii v5.5 Clang 22.1.8 PGO + AMD ridge fix (${GITHUB_SHA::7})" \
+            --notes "Exact Fritchii v5.5 source plus the four-file Vulkan unwritten-render-target fix from zortos293/Lichii issue 323. Full AMD shader precompilation retained. No audio changes. Compiled with pinned MSYS2 Clang 22.1.8 plus LLD 22.1.8, using eglantine.profdata for PGO. Four Vulkan files changed, all shader precompilation preserved, no audio changes. Untested in-game."
