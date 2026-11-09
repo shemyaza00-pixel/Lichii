@@ -297,7 +297,6 @@ jobs:
         run: >-
           cmake -S . -B build/release -G Ninja
           -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_CXX_FLAGS=-wd4459
           -DBUILD_TESTING=OFF
           -DYUZU_TESTS=OFF
           -DYUZU_CMD=ON
@@ -377,6 +376,9 @@ jobs:
       - name: Build
         if: ${{ ! matrix.mingw }}
         shell: bash
+        env:
+          # MSVC reads _CL_ after command-line flags; override upstream /we4459.
+          _CL_: /wd4459
         run: |
           if command -v ccache > /dev/null; then ccache --zero-stats; else sccache --zero-stats; fi
           cmake --build build/release --target yuzu yuzu-cmd --parallel
