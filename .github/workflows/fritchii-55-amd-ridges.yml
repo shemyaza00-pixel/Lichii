@@ -79,17 +79,17 @@ jobs:
             runner: windows-2022
 
     steps:
-      - name: Check out patch instructions from user's fork
-        uses: actions/checkout@v5
-        with:
-          path: integration-src
-
       - name: Check out exact Fritchii v5.5 source
         uses: actions/checkout@v5
         with:
           repository: Frizti/Fritchii
           ref: 4012e5271e278b21cf8f56b97481dac2b777cd0d
           submodules: false
+
+      - name: Check out patch instructions from user's fork
+        uses: actions/checkout@v5
+        with:
+          path: integration-src
 
       - name: Apply the AMD mountain-ridge rendering fix
         shell: bash
