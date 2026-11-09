@@ -378,6 +378,24 @@ jobs:
             "-DCMAKE_C_FLAGS=$profile" \
             "-DCMAKE_CXX_FLAGS=$profile"
 
+      - name: Let Clang report upstream shadowing as warnings
+        if: matrix.mingw
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          # Upstream Fritchii v5.5 has local variable shadowing in NX2 modules.
+          # Keep warnings visible, but do not turn them into fatal errors.
+          # This changes build diagnostics only, not generated emulator behavior.
+          if ! grep -rql -- '-Werror=shadow' build/release --include='*.ninja'; then
+            echo 'Expected -Werror=shadow flag was not found in Ninja files' >&2
+            exit 1
+          fi
+          find build/release -type f -name '*.ninja' -exec sed -i 's/-Werror=shadow/-Wno-error=shadow/g' {} +
+          if grep -rq -- '-Werror=shadow' build/release --include='*.ninja'; then
+            echo 'Could not change all shadowing warning flags' >&2
+            exit 1
+          fi
+
       - name: Save CPM downloads
         if: steps.cpm-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
