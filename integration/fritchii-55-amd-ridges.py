@@ -104,3 +104,18 @@ replace_once("src/video_core/gpu_split.h",
                    (u64{repeats} << 32);
         std::memcpy(entry + 1, batch_writes, size_t{count} * sizeof(u64));""")
 print('Applied four-file Vulkan graphics patch plus one identifier-only Clang build fix')
+# MSVC-specific automatic link pragma is not supported by MinGW Clang 23.
+# Guard the pragma for MSVC, and link the DWM API explicitly in CMake for both
+# Windows compilers. This preserves the same dependency and functionality.
+replace_once("src/video_core/renderer_vulkan/vk_host_pacer.cpp",
+    '#pragma comment(lib, "dwmapi.lib")',
+    '#ifdef _MSC_VER\n#pragma comment(lib, "dwmapi.lib")\n#endif')
+replace_once("src/video_core/CMakeLists.txt",
+    """if(WIN32)
+    target_link_libraries(video_core PRIVATE advapi32)
+endif()""",
+    """if(WIN32)
+    target_link_libraries(video_core PRIVATE advapi32 dwmapi)
+endif()""")
+print('Guarded MSVC-only DWM pragma and linked dwmapi explicitly for MinGW')
+
