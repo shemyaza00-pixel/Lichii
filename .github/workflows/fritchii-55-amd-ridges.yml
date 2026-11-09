@@ -351,8 +351,8 @@ jobs:
           clang --version
           clang++ --version
           ld.lld --version
-          clang --version | grep -Eq 'clang version 22\\.1\\.8'
-          ld.lld --version | grep -Eq 'LLD 22\\.1\\.8'
+          clang --version | grep -Fq 'clang version 22.1.8'
+          ld.lld --version | grep -Fq 'LLD 22.1.8'
           test -s eglantine.profdata
           # Do not silently fall back to Clang 23 or turn PGO off.
           llvm-profdata show eglantine.profdata >/dev/null
