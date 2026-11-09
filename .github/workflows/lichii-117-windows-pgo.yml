@@ -552,6 +552,12 @@ jobs:
           strip_sha() { sed "s/-${GITHUB_SHA}//" <<< "$1"; }
           for artifact in artifacts/*/; do
             name=$(basename "$artifact")
+            # Windows artifacts contain deployed subdirectories (platforms/, plugins/, etc.).
+            # Package the complete bin directory as ONE zip, not each subdirectory separately.
+            if [[ "$name" == lichii-windows-* ]]; then
+              (cd "$artifact" && zip -qr "${GITHUB_WORKSPACE}/dist/$(strip_sha "$name").zip" .)
+              continue
+            fi
             if compgen -G "$artifact*.AppImage" > /dev/null; then
               # Linux: ship the AppImage and the tar.gz as they are.
               for file in "$artifact"*.AppImage "$artifact"*.tar.gz; do
