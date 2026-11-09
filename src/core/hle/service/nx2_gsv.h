@@ -2647,6 +2647,37 @@ private:
         u32 value;
     };
 
+    // OoT consumes movie frames at game FPS. Keep presentation on a real-time clock.
+    static constexpr u64 OcarinaMovieProgramId = 0x0400486024DEC000ULL;
+    static constexpr auto MovieClockPause = std::chrono::seconds{1};
+
+    bool SyncsToClock() const {
+        return system.GetApplicationProcessProgramID() == OcarinaMovieProgramId;
+    }
+
+    bool IsMovieFrameLate(u64 pts) const {
+        if (!m_movie_clock_running) {
+            return false;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (now - m_movie_last_take > MovieClockPause) {
+            return false;
+        }
+        const auto elapsed =
+            std::chrono::duration_cast<std::chrono::microseconds>(now - m_movie_start).count();
+        const u64 due = m_movie_start_pts + static_cast<u64>((std::max<s64>)(elapsed, 0));
+        return pts + 2 * m_movie_frame_us < due;
+    }
+
+    void EndMovieClock() {
+        if (m_movie_late_skipped != 0) {
+            LOG_INFO(Service, "{} skipped {} late frames to keep the movie in time",
+                     GetServiceName(), m_movie_late_skipped);
+        }
+        m_movie_late_skipped = 0;
+        m_movie_clock_running = false;
+    }
+
     static constexpr u32 NoSyncpoint = ~0U;
     static constexpr size_t MaxDecodedAhead = 2; // decoded frames held while no image is free
     static constexpr u32 HostSyncpoints = 192;   // Tegra::Host1x::SyncpointManager
@@ -2732,6 +2763,9 @@ private:
             m_codec = std::move(codec);
             m_width = w[5];
             m_height = w[6];
+            m_movie_frame_us = w[7] != 0 && w[7] <= 240 ? u64{1'000'000} / w[7]
+                                                        : u64{1'000'000} / 60;
+            EndMovieClock();
         }
         if (!m_worker.joinable()) {
             m_worker = std::thread{[this] { DecodeLoop(); }};
@@ -2890,6 +2924,7 @@ private:
                          m_stream_ended, m_end_queued);
             }
             m_inputs.Clear();
+            EndMovieClock();
             m_flush = true;
             m_stream_ended = false;
             m_end_queued = false;
@@ -2917,6 +2952,7 @@ private:
                          m_decoded_frames, m_frames_out, m_stream_ended, m_end_queued);
             }
             CompleteHandedFences();
+            EndMovieClock();
         }
         TipcReplyWords(ctx, {});
     }
@@ -2947,6 +2983,13 @@ private:
             if (!m_outputs.empty()) {
                 output = m_outputs.front();
                 m_outputs.pop_front();
+                if (m_movie_clock_running) {
+                    const auto now = std::chrono::steady_clock::now();
+                    if (now - m_movie_last_take > MovieClockPause) {
+                        m_movie_start += now - m_movie_last_take;
+                    }
+                    m_movie_last_take = now;
+                }
             }
         }
         if (!output) {
@@ -2990,6 +3033,7 @@ private:
             if (m_flush) {
                 m_flush = false;
                 m_decoded.clear();
+                EndMovieClock();
                 if (decoder) {
                     lk.unlock();
                     decoder->Reset();
@@ -2998,8 +3042,19 @@ private:
                 continue;
             }
             if (!m_decoded.empty() && !m_free.empty()) {
+                while (m_decoded.size() > 1 && !m_decoded.front().end &&
+                       IsMovieFrameLate(m_decoded.front().pts)) {
+                    m_decoded.pop_front();
+                    ++m_movie_late_skipped;
+                }
                 Decoded frame = std::move(m_decoded.front());
                 m_decoded.pop_front();
+                if (!m_movie_clock_running && frame.picture && !frame.end && SyncsToClock()) {
+                    m_movie_clock_running = true;
+                    m_movie_start = std::chrono::steady_clock::now();
+                    m_movie_last_take = m_movie_start;
+                    m_movie_start_pts = frame.pts;
+                }
                 const u32 image = m_free.front();
                 m_free.pop_front();
                 std::optional<Fence> fence;
@@ -3019,6 +3074,7 @@ private:
                     m_stream_ended = true;
                     m_end_queued = false;
                     m_ready->room.store(false, std::memory_order_relaxed);
+                    EndMovieClock();
                 }
                 system.Host1x().GetSyncpointManager().IncrementGuest(m_syncpoint);
                 m_last_output = m_outputs.back();
@@ -3074,9 +3130,22 @@ private:
             if (m_flush) {
                 continue;
             }
-            for (auto& picture : pictures) {
-                const u64 pts = picture.pts;
-                m_decoded.push_back({std::move(picture), pts, false});
+            for (size_t i = 0; i < pictures.size(); ++i) {
+                const u64 pts = pictures[i].pts;
+                if (IsMovieFrameLate(pts)) {
+                    const bool last = input.end && i + 1 == pictures.size();
+                    const bool newer_follows = i + 1 < pictures.size() || !m_inputs.Empty();
+                    if (!last && newer_follows) {
+                        ++m_movie_late_skipped;
+                        continue;
+                    }
+                    while (!m_decoded.empty() && !m_decoded.back().end &&
+                           IsMovieFrameLate(m_decoded.back().pts)) {
+                        m_decoded.pop_back();
+                        ++m_movie_late_skipped;
+                    }
+                }
+                m_decoded.push_back({std::move(pictures[i]), pts, false});
             }
             if (input.end) {
                 // The client stops at the frame marked end of stream; give it one even when the
@@ -3275,6 +3344,12 @@ private:
     bool m_end_queued{};
     bool m_flush{};
     bool m_quit{};
+    u64 m_movie_frame_us{1'000'000 / 60};
+    bool m_movie_clock_running{};
+    std::chrono::steady_clock::time_point m_movie_start{};
+    std::chrono::steady_clock::time_point m_movie_last_take{};
+    u64 m_movie_start_pts{};
+    u64 m_movie_late_skipped{};
     std::thread m_worker;
 };
 
