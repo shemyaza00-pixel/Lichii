@@ -75,8 +75,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-x86_64
+          # Identical platform/toolchain and PGO profile as official Fritchii 5.5 Windows PGO.
+          - platform: windows-x86_64-pgo
             runner: windows-2022
+            pgo: true
+            mingw: true
 
     steps:
       - name: Check out exact Fritchii v5.5 source
@@ -97,7 +100,7 @@ jobs:
           python integration-src/integration/fritchii-55-amd-ridges.py
           git diff --check
           git diff --stat
-          test "$(git diff --name-only | wc -l)" -eq 6
+          test "$(git diff --name-only | wc -l)" -eq 4
 
       - name: Install Linux dependencies
         if: startsWith(matrix.platform, 'linux')
@@ -336,6 +339,15 @@ jobs:
 
       # MinGW build: system Qt and libraries from MSYS2, clang plus the repo's PGO profile. The profile
       # path is converted to its Windows form because clang runs with the MSYS mount underneath.
+      - name: Confirm official Clang toolchain and PGO profile
+        if: matrix.mingw
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          clang --version
+          test -s eglantine.profdata
+          echo "Windows PGO profile available."
+
       - name: Configure MinGW PGO
         if: matrix.mingw
         shell: msys2 {0}
@@ -365,29 +377,6 @@ jobs:
             -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld \
             "-DCMAKE_C_FLAGS=$profile" \
             "-DCMAKE_CXX_FLAGS=$profile"
-
-      - name: Keep upstream MSVC warnings as warnings
-        if: matrix.platform == 'windows-x86_64'
-        shell: pwsh
-        run: |
-          # Fritchii is normally built with Clang; its MSVC warning-as-error
-          # settings reject harmless shadowing in unchanged source files.
-          # Disable only the promotion of MSVC warnings to errors, not actual
-          # compiler errors, in generated Ninja command lines.
-          $files = Get-ChildItem build/release -Recurse -Filter '*.ninja' -File
-          $total = 0
-          foreach ($file in $files) {
-            $original = [System.IO.File]::ReadAllText($file.FullName)
-            $matches = [regex]::Matches($original, '(?<!\\w)(?:/|-| -)we([0-9]{4})')
-            # Preserve prefix; change /weNNNN -> /wdNNNN.
-            $updated = [regex]::Replace($original, '([/-])we([0-9]{4})', '$1wd$2')
-            if ($updated -ne $original) {
-              [System.IO.File]::WriteAllText($file.FullName, $updated)
-              $total += $matches.Count
-            }
-          }
-          Write-Host "MSVC promoted-warning flags disabled: $total"
-          if ($total -eq 0) { throw 'No MSVC promoted-warning flags found in Ninja files' }
 
       - name: Save CPM downloads
         if: steps.cpm-cache.outputs.cache-hit != 'true'
@@ -645,7 +634,7 @@ jobs:
       - name: Download Windows artifact
         uses: actions/download-artifact@v7
         with:
-          pattern: lichii-windows-x86_64-${{ github.sha }}
+          pattern: lichii-windows-x86_64-pgo-${{ github.sha }}
           path: artifacts
           merge-multiple: true
 
@@ -668,5 +657,5 @@ jobs:
           tag="fritchii55-amd-${GITHUB_RUN_NUMBER}"
           gh release create "$tag" dist/fritchii-55-amd-ridge-fix-windows-x64.zip \
             --repo "${GITHUB_REPOSITORY}" --verify-tag --prerelease \
-            --title "Fritchii v5.5 + AMD ridge rendering fix (${GITHUB_SHA::7})" \
-            --notes "Exact Fritchii v5.5 source plus the four-file Vulkan unwritten-render-target fix from zortos293/Lichii issue 323. Full AMD shader precompilation retained. No audio changes. The patch is untested in-game; test visually before relying on it. The extra frizti_settings.cpp identifier-only rename is needed for MSVC and does not change runtime behavior."
+            --title "Fritchii v5.5 Clang PGO + AMD ridge fix (${GITHUB_SHA::7})" \
+            --notes "Exact Fritchii v5.5 source plus the four-file Vulkan unwritten-render-target fix from zortos293/Lichii issue 323. Full AMD shader precompilation retained. No audio changes. Compiled with the original Fritchii Windows Clang/MSYS2 PGO toolchain and eglantine.profdata. Four Vulkan files changed, all shader precompilation preserved, no audio changes. Untested in-game."

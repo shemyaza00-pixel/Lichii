@@ -85,32 +85,4 @@ replace_once(root + "vk_rasterizer.h",
     """    void UpdateBlending(Tegra::Engines::Maxwell3D::Regs& regs);
     u8 last_color_output_mask{0xff};
     void UpdateColorWriteEnable""")
-# Fritchii v5.5 uses a local variable named 'values' in settings functions.
-# Its upstream MSVC flags mark shadow warnings (C4459) as errors; renaming a
-# local identifier fixes the build without changing the settings behavior.
-import re
-settings_path = Path("src/common/frizti_settings.cpp")
-settings_text = settings_path.read_text(encoding="utf-8")
-settings_text, renamed = re.subn(r"\bvalues\b", "local_values", settings_text)
-if renamed < 6:
-    raise RuntimeError(f"Unexpected local settings variable count: {renamed}")
-settings_path.write_text(settings_text, encoding="utf-8")
-print(f"Renamed {renamed} local settings references for MSVC build compatibility")
-replace_once("src/video_core/gpu_split.h",
-    """    void DrawBatch(Tegra::Engines::EngineInterface* engine, const u64* writes, u32 count,
-                   u32 repeats, Effect effect) {
-        SelectEngine(engine);
-        u64* const entry = Reserve(1 + size_t{count});
-        entry[0] = static_cast<u64>(Kind::DrawBatch) | (u64{count & 0xff} << 8) |
-                   (u64{repeats} << 32);
-        std::memcpy(entry + 1, writes, size_t{count} * sizeof(u64));""",
-    """    void DrawBatch(Tegra::Engines::EngineInterface* engine, const u64* batch_writes, u32 count,
-                   u32 repeats, Effect effect) {
-        SelectEngine(engine);
-        u64* const entry = Reserve(1 + size_t{count});
-        entry[0] = static_cast<u64>(Kind::DrawBatch) | (u64{count & 0xff} << 8) |
-                   (u64{repeats} << 32);
-        std::memcpy(entry + 1, batch_writes, size_t{count} * sizeof(u64));""")
-print("Renamed one shadowing DrawBatch parameter (MSVC C4458)")
-
-print("Applied four-file #323 graphics fix plus settings identifier rename (no semantic change)")
+print('Applied issue #323 AMD Vulkan rendering fix to exactly four graphics files')
