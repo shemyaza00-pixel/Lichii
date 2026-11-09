@@ -100,7 +100,7 @@ jobs:
           python integration-src/integration/fritchii-55-amd-ridges.py
           git diff --check
           git diff --stat
-          test "$(git diff --name-only | wc -l)" -eq 4
+          test "$(git diff --name-only | wc -l)" -eq 5
 
       - name: Install Linux dependencies
         if: startsWith(matrix.platform, 'linux')
