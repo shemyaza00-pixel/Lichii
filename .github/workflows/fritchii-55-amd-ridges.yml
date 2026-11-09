@@ -386,12 +386,12 @@ jobs:
           # Upstream Fritchii v5.5 has local variable shadowing in NX2 modules.
           # Keep warnings visible, but do not turn them into fatal errors.
           # This changes build diagnostics only, not generated emulator behavior.
-          if ! grep -rql -- '-Werror=shadow' build/release --include='*.ninja'; then
+          if ! grep -rql --include='*.ninja' -- '-Werror=shadow' build/release; then
             echo 'Expected -Werror=shadow flag was not found in Ninja files' >&2
             exit 1
           fi
           find build/release -type f -name '*.ninja' -exec sed -i 's/-Werror=shadow/-Wno-error=shadow/g' {} +
-          if grep -rq -- '-Werror=shadow' build/release --include='*.ninja'; then
+          if grep -rq --include='*.ninja' -- '-Werror=shadow' build/release; then
             echo 'Could not change all shadowing warning flags' >&2
             exit 1
           fi
