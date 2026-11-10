@@ -1,5 +1,7 @@
 name: fritchii-55-amd-ridges
 
+# Manual dispatch is exposed through the entry-point workflow in default branch nx2.
+# This branch contains the full Clang 22.1.8 + PGO build.
 on:
   workflow_dispatch:
   push:
