@@ -1,0 +1,19 @@
+# Manual-launch entry point for the Fritchii 5.5 Clang 22.1.8 PGO build.
+# This file makes "Run workflow" available in GitHub Actions on the default
+# nx2 branch. Select branch "fix/fritchii-55-amd-ridges" in the Run workflow
+# dropdown to run the complete build workflow stored on that branch.
+# The default branch intentionally does not contain the integration source.
+name: fritchii-55-amd-ridges
+
+on:
+  workflow_dispatch:
+
+jobs:
+  choose-correct-branch:
+    name: Select fix/fritchii-55-amd-ridges
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain how to run the Clang 22 PGO build
+        run: |
+          echo "::error::Use Run workflow with branch fix/fritchii-55-amd-ridges. The default nx2 branch contains only this manual-launch entry point."
+          exit 1
