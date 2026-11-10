@@ -692,15 +692,62 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      # The Fritchii v5.5 shader recipes are shipped in the official portable
+      # release, NOT in the source repository. Without recipes/*.nx2recipe the
+      # automatic ~120k-shader AMD preparation cannot run. Never publish an
+      # emulator without restoring the matching official recipe.
+      - name: Include original Fritchii v5.5 shader recipes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p original-release
+          gh release download fritchii-v5.5 \
+            --repo Frizti/Fritchii \
+            --pattern Fritchii-v5.5-Windows-x64.zip \
+            --dir original-release
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+          import zipfile
+          original = Path("original-release/Fritchii-v5.5-Windows-x64.zip")
+          assert original.is_file() and original.stat().st_size > 1_000_000
+          dest = Path("artifacts")
+          copied = []
+          with zipfile.ZipFile(original) as z:
+              for member in z.infolist():
+                  if member.is_dir():
+                      continue
+                  parts = Path(member.filename.replace(chr(92), "/")).parts
+                  if "recipes" not in parts or ".." in parts:
+                      continue
+                  relative = Path(*parts[parts.index("recipes"):])
+                  if relative.suffix != ".nx2recipe":
+                      continue
+                  target = dest / relative
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  with z.open(member) as src, target.open("wb") as out:
+                      shutil.copyfileobj(src, out)
+                  if target.stat().st_size == 0:
+                      raise RuntimeError(f"Empty recipe: {member.filename}")
+                  copied.append((str(relative), target.stat().st_size))
+          if not copied:
+              raise RuntimeError("Official v5.5 zip has no usable recipes/*.nx2recipe: refusing to publish")
+          print("Restored official precompile recipes:", copied)
+          PY
+
       - name: Verify and zip Windows program
         shell: bash
         run: |
           set -euo pipefail
           test -s artifacts/lichii.exe
           test -s artifacts/eden-cli.exe
+          test "$(find artifacts/recipes -type f -name '*.nx2recipe' -size +0c | wc -l)" -gt 0
           mkdir dist
           (cd artifacts && zip -qr ../dist/fritchii-55-amd-ridge-fix-windows-x64.zip .)
           unzip -l dist/fritchii-55-amd-ridge-fix-windows-x64.zip | grep lichii.exe
+          unzip -l dist/fritchii-55-amd-ridge-fix-windows-x64.zip | grep -E 'recipes/.*\.nx2recipe'
 
       - name: Publish release on user's fork
         shell: bash
@@ -712,4 +759,4 @@ jobs:
           gh release create "$tag" dist/fritchii-55-amd-ridge-fix-windows-x64.zip \
             --repo "${GITHUB_REPOSITORY}" --verify-tag --prerelease \
             --title "Fritchii v5.5 Clang 22.1.8 PGO + AMD ridge fix (${GITHUB_SHA::7})" \
-            --notes "Exact Fritchii v5.5 source plus the four-file Vulkan unwritten-render-target fix from zortos293/Lichii issue 323. Full AMD shader precompilation retained. No audio changes. Compiled with pinned MSYS2 Clang 22.1.8, LLD 22.1.8 and PGO enabled via conversion of upstream eglantine.profdata to LLVM 22 indexed format. Four Vulkan files changed, all shader precompilation preserved, no audio changes. Untested in-game."
+            --notes "Exact Fritchii v5.5 source plus the four-file Vulkan unwritten-render-target fix from zortos293/Lichii issue 323. Original v5.5 recipes/*.nx2recipe copied from the official portable release and verified, enabling the full AMD shader preparation. No audio changes. Compiled with pinned MSYS2 Clang 22.1.8, LLD 22.1.8 and PGO enabled via conversion of upstream eglantine.profdata to LLVM 22 indexed format. Four Vulkan files changed, all shader precompilation preserved, no audio changes. Untested in-game."
