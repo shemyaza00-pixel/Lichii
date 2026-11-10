@@ -30,10 +30,11 @@ permissions:
 env:
   PGO_LLVM_VERSION: "23"
 
-# A running build is never cancelled: it finishes and publishes. A push meanwhile queues one build;
-# a later push replaces it, so the newest commit builds as soon as the running one is done.
+# Dedicated concurrency group for the Clang 22 PGO workflow. Earlier canceled
+# single-job reruns can remain queued without creating a job; a fresh push in
+# this group avoids inheriting that stale scheduling state.
 concurrency:
-  group: release-binaries-${{ github.ref }}
+  group: fritchii-clang22-pgo-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
